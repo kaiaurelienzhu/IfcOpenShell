@@ -32,7 +32,7 @@ class EditObjectPlacement(bpy.types.Operator):
             if not obj.BIMObjectProperties.ifc_definition_id:
                 continue
             matrix = np.array(obj.matrix_world)
-            if props.has_blender_offset and props.blender_offset_type == "OBJECT_PLACEMENT":
+            if props.has_blender_offset and obj.BIMObjectProperties.blender_offset_type == "OBJECT_PLACEMENT":
                 unit_scale = ifcopenshell.util.unit.calculate_unit_scale(self.file)
                 # TODO: np.array? Why not matrix?
                 matrix = np.array(
@@ -84,7 +84,7 @@ class AddRepresentation(bpy.types.Operator):
 
         gprop = context.scene.BIMGeoreferenceProperties
         coordinate_offset = None
-        if gprop.has_blender_offset and gprop.blender_offset_type == "CARTESIAN_POINT":
+        if gprop.has_blender_offset and obj.BIMObjectProperties.blender_offset_type == "CARTESIAN_POINT":
             coordinate_offset = Vector(
                 (
                     float(gprop.blender_eastings),
@@ -102,7 +102,7 @@ class AddRepresentation(bpy.types.Operator):
             "should_force_faceted_brep": context.scene.BIMGeometryProperties.should_force_faceted_brep,
             "should_force_triangulation": context.scene.BIMGeometryProperties.should_force_triangulation,
             "ifc_representation_class": self.ifc_representation_class,
-            "profile_set_usage": self.file.by_id(self.profile_set_usage) if self.profile_set_usage else None
+            "profile_set_usage": self.file.by_id(self.profile_set_usage) if self.profile_set_usage else None,
         }
 
         result = ifcopenshell.api.run("geometry.add_representation", self.file, **representation_data)
@@ -207,6 +207,7 @@ class SwitchRepresentation(bpy.types.Operator):
         mesh.BIMMeshProperties.ifc_definition_id = self.ifc_definition_id
         self.element_obj.data.user_remap(mesh)
         material_creator = import_ifc.MaterialCreator(ifc_import_settings, ifc_importer)
+        material_creator.load_existing_materials()
         material_creator.create(element, self.element_obj, mesh)
 
         if self.disable_opening_subtractions and self.context_of_items.ContextIdentifier == "Body":
@@ -301,7 +302,7 @@ class UpdateRepresentation(bpy.types.Operator):
 
         gprop = context.scene.BIMGeoreferenceProperties
         coordinate_offset = None
-        if gprop.has_blender_offset and gprop.blender_offset_type == "CARTESIAN_POINT":
+        if gprop.has_blender_offset and obj.BIMObjectProperties.blender_offset_type == "CARTESIAN_POINT":
             coordinate_offset = Vector(
                 (
                     float(gprop.blender_eastings),
@@ -322,6 +323,12 @@ class UpdateRepresentation(bpy.types.Operator):
         }
 
         new_representation = ifcopenshell.api.run("geometry.add_representation", self.file, **representation_data)
+
+        [
+            bpy.ops.bim.add_style(material=s.material.name)
+            for s in obj.material_slots
+            if s.material and not s.material.BIMMaterialProperties.ifc_style_id
+        ]
 
         ifcopenshell.api.run(
             "geometry.assign_styles",

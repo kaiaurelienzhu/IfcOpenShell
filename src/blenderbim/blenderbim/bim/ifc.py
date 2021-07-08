@@ -16,6 +16,7 @@ class IfcStore:
     library_path = ""
     library_file = None
     element_listeners = set()
+    undo_redo_stack_objects = set()
     current_transaction = ""
     last_transaction = ""
     history = []
@@ -71,18 +72,35 @@ class IfcStore:
         IfcStore.element_listeners.add(callback)
 
     @staticmethod
-    def reload_linked_elements(should_reload_selected=False):
+    def update_undo_redo_stack_objects():
+        """Keeps track of selected object names, typically during undo and redo
+
+        When any Blender object is stored outside a Blender PointerProperty, such as
+        in a regular Python list, there is the likely probability that the object
+        will be invalidated when undo or redo occurs. Object invalidation seems to
+        only occur for selected objects either pre/post undo/redo event, including
+        selected objects for consecutive undo/redos.
+
+        So if I first select o1, then o2, then o3, then press undo, o3 will be
+        invalidated. If instead I press undo twice, o3 and o2 will be invalidated.
+        """
+        if bpy.context.active_object:
+            objects = set([o.name for o in bpy.context.selected_objects + [bpy.context.active_object]])
+        else:
+            objects = set([o.name for o in bpy.context.selected_objects])
+        IfcStore.undo_redo_stack_objects |= objects
+
+    @staticmethod
+    def reload_linked_elements(objects=None):
         file = IfcStore.get_file()
         if not file:
             return
-        if should_reload_selected:
-            objects = bpy.context.selected_objects
-            if bpy.context.active_object:
-                objects += [bpy.context.active_object]
-        else:
+        if objects is None:
             objects = bpy.data.objects
 
         for obj in objects:
+            if not obj:
+                continue
             if not obj.BIMObjectProperties.ifc_definition_id:
                 continue
             element = file.by_id(obj.BIMObjectProperties.ifc_definition_id)
@@ -165,24 +183,15 @@ class IfcStore:
         if is_top_level_operator:
             IfcStore.get_file().end_transaction()
             IfcStore.add_transaction_operation(
-                operator, rollback=IfcStore.rollback_ifc_operator, commit=IfcStore.commit_ifc_operator
+                operator, rollback=lambda d: IfcStore.get_file().undo(), commit=lambda d: IfcStore.get_file().redo()
             )
             IfcStore.end_transaction(operator)
 
         return result
 
     @staticmethod
-    def rollback_ifc_operator(data):
-        IfcStore.get_file().undo()
-        blenderbim.bim.handler.purge_module_data()
-
-    @staticmethod
-    def commit_ifc_operator(data):
-        IfcStore.get_file().redo()
-        blenderbim.bim.handler.purge_module_data()
-
-    @staticmethod
     def begin_transaction(operator):
+        IfcStore.undo_redo_stack_objects = set()
         IfcStore.current_transaction = str(uuid.uuid4())
         operator.transaction_key = IfcStore.current_transaction
 

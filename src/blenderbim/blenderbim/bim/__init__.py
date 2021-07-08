@@ -10,7 +10,6 @@ if bpy is not None:
 
     modules = {
         "project": None,
-        "parametric": None,
         "search": None,
         "bcf": None,
         "root": None,
@@ -62,9 +61,6 @@ if bpy is not None:
         operator.SelectIfcFile,
         operator.ExportIFC,
         operator.ImportIFC,
-        operator.SelectExternalMaterialDir,
-        operator.FetchExternalMaterial,
-        operator.FetchObjectPassport,
         operator.OpenUpstream,
         operator.AddSectionPlane,
         operator.RemoveSectionPlane,
@@ -73,8 +69,6 @@ if bpy is not None:
         operator.RemoveIfcFile,
         operator.SetOverrideColour,
         operator.SetViewportShadowFromSun,
-        operator.CopyPropertyToSelection,
-        operator.CopyAttributeToSelection,
         operator.LinkIfc,
         operator.SnapSpacesTogether,
         prop.StrProperty,
@@ -85,7 +79,6 @@ if bpy is not None:
         prop.GlobalId,
         prop.BIMObjectProperties,
         prop.BIMMaterialProperties,
-        prop.ItemSlotMap,
         prop.BIMMeshProperties,
         ui.BIM_PT_section_plane,
         ui.BIM_UL_generic,
@@ -110,7 +103,9 @@ if bpy is not None:
         for cls in classes:
             bpy.utils.register_class(cls)
         bpy.app.handlers.depsgraph_update_post.append(on_register)
+        bpy.app.handlers.undo_pre.append(handler.undo_pre)
         bpy.app.handlers.undo_post.append(handler.undo_post)
+        bpy.app.handlers.redo_pre.append(handler.redo_pre)
         bpy.app.handlers.redo_post.append(handler.redo_post)
         bpy.app.handlers.load_post.append(handler.setDefaultProperties)
         bpy.app.handlers.load_post.append(handler.loadIfcStore)
