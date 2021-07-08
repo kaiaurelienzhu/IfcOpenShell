@@ -42,7 +42,8 @@ def nodes_index():
                 ("ifc.generate_guid", "SvIfcGenerateGuid"),
                 ("ifc.get_property", "SvIfcGetProperty"),
                 ("ifc.get_attribute", "SvIfcGetAttribute"),
-                ("ifc.select_blender_objects", "SvIfcSelectBlenderObjects"),
+                ("ifc.select_blender_objects", "SvIfcSelectBlenderObjects")
+                ("ifc.test_node", "SvtestNode"),
             ],
         )
     ]
