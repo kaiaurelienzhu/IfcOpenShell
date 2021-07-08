@@ -7,8 +7,8 @@ from sverchok.data_structure import updateNode
 
 
 class SvtestNode(bpy.types.Node, SverchCustomTreeNode, ifcsverchok.helper.SvIfcCore):
-    bl_idname = "testNode"
-    bl_label = "testNode"
+    bl_idname = "SvtestNode"
+    bl_label = "Test Node"
     file: StringProperty(name="file", update=updateNode)
     entity: StringProperty(name="entity", update=updateNode)
 
