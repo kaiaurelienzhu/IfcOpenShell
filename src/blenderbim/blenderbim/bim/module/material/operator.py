@@ -2,6 +2,7 @@ import bpy
 import json
 import ifcopenshell.api
 import ifcopenshell.util.attribute
+import ifcopenshell.util.representation
 import blenderbim.bim.helper
 from blenderbim.bim.module.material.prop import purge as material_prop_purge
 from blenderbim.bim.ifc import IfcStore
@@ -53,6 +54,14 @@ class AddMaterial(bpy.types.Operator):
         self.file = IfcStore.get_file()
         result = ifcopenshell.api.run("material.add_material", self.file, **{"name": obj.name})
         obj.BIMObjectProperties.ifc_definition_id = result.id()
+        if obj.BIMMaterialProperties.ifc_style_id:
+            context = ifcopenshell.util.representation.get_context(self.file, "Model", "Body", "MODEL_VIEW")
+            if context:
+                ifcopenshell.api.run("style.assign_material_style", self.file, **{
+                    "material": result,
+                    "style": self.file.by_id(obj.BIMMaterialProperties.ifc_style_id),
+                    "context": context,
+                })
         Data.load(IfcStore.get_file())
         material_prop_purge()
         return {"FINISHED"}
@@ -464,7 +473,6 @@ class EditAssignedMaterial(bpy.types.Operator):
         obj = bpy.data.objects.get(self.obj) if self.obj else bpy.context.active_object
         props = obj.BIMObjectMaterialProperties
         product_data = Data.products[obj.BIMObjectProperties.ifc_definition_id]
-        material_set = self.file.by_id(self.material_set)
 
         if product_data["type"] == "IfcMaterial":
             bpy.ops.bim.unassign_material(obj=obj.name)
@@ -472,6 +480,8 @@ class EditAssignedMaterial(bpy.types.Operator):
             Data.load(IfcStore.get_file(), obj.BIMObjectProperties.ifc_definition_id)
             bpy.ops.bim.disable_editing_assigned_material(obj=obj.name)
             return {"FINISHED"}
+
+        material_set = self.file.by_id(self.material_set)
 
         attributes = {}
         for attribute in props.material_set_attributes:
@@ -486,16 +496,21 @@ class EditAssignedMaterial(bpy.types.Operator):
         if self.material_set_usage:
             material_set_usage = self.file.by_id(self.material_set_usage)
             attributes = blenderbim.bim.helper.export_attributes(props.material_set_usage_attributes)
-            if attributes.get("CardinalPoint", None):
-                attributes["CardinalPoint"] = int(attributes["CardinalPoint"])
-            ifcopenshell.api.run(
-                "material.edit_profile_usage",
-                self.file,
-                **{"usage": material_set_usage, "attributes": attributes},
-            )
             if material_set_usage.is_a("IfcMaterialLayerSetUsage"):
+                ifcopenshell.api.run(
+                    "material.edit_layer_usage",
+                    self.file,
+                    **{"usage": material_set_usage, "attributes": attributes},
+                )
                 Data.load_layer_usages()
             elif material_set_usage.is_a("IfcMaterialProfileSetUsage"):
+                if attributes.get("CardinalPoint", None):
+                    attributes["CardinalPoint"] = int(attributes["CardinalPoint"])
+                ifcopenshell.api.run(
+                    "material.edit_profile_usage",
+                    self.file,
+                    **{"usage": material_set_usage, "attributes": attributes},
+                )
                 Data.load_profile_usages()
 
         if material_set.is_a("IfcMaterialConstituentSet"):

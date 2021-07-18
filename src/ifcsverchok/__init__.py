@@ -42,8 +42,13 @@ def nodes_index():
                 ("ifc.generate_guid", "SvIfcGenerateGuid"),
                 ("ifc.get_property", "SvIfcGetProperty"),
                 ("ifc.get_attribute", "SvIfcGetAttribute"),
+<<<<<<< HEAD
                 ("ifc.select_blender_objects", "SvIfcSelectBlenderObjects")
                 ("ifc.test_node", "SvtestNode"),
+=======
+                ("ifc.select_blender_objects", "SvIfcSelectBlenderObjects"),
+                ("ifc.api", "SvIfcApi"),
+>>>>>>> upstream/v0.6.0
             ],
         )
     ]

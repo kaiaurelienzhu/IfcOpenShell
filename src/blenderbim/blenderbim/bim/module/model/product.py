@@ -1,4 +1,5 @@
 import bpy
+import mathutils
 import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.util.element
@@ -6,7 +7,7 @@ import ifcopenshell.util.representation
 from . import wall, slab, column
 from blenderbim.bim.ifc import IfcStore
 from ifcopenshell.api.pset.data import Data as PsetData
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 
 class AddTypeInstance(bpy.types.Operator):
@@ -73,6 +74,52 @@ class AddTypeInstance(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class AlignProduct(bpy.types.Operator):
+    bl_idname = "bim.align_product"
+    bl_label = "Align Wall"
+    bl_options = {"REGISTER", "UNDO"}
+    align_type: bpy.props.StringProperty()
+
+    def execute(self, context):
+        selected_objs = context.selected_objects
+        if len(selected_objs) < 2 or not context.active_object:
+            return {"FINISHED"}
+        if self.align_type == "CENTERLINE":
+            point = context.active_object.matrix_world @ (
+                Vector(context.active_object.bound_box[0]) + (context.active_object.dimensions / 2)
+            )
+        elif self.align_type == "POSITIVE":
+            point = context.active_object.matrix_world @ Vector(context.active_object.bound_box[6])
+        elif self.align_type == "NEGATIVE":
+            point = context.active_object.matrix_world @ Vector(context.active_object.bound_box[0])
+
+        active_x_axis = context.active_object.matrix_world.to_quaternion() @ Vector((1, 0, 0))
+        active_y_axis = context.active_object.matrix_world.to_quaternion() @ Vector((0, 1, 0))
+        active_z_axis = context.active_object.matrix_world.to_quaternion() @ Vector((0, 0, 1))
+
+        x_distances = self.get_axis_distances(point, active_x_axis)
+        y_distances = self.get_axis_distances(point, active_y_axis)
+        if abs(sum(x_distances)) < abs(sum(y_distances)):
+            for i, obj in enumerate(selected_objs):
+                obj.matrix_world = Matrix.Translation(active_x_axis * -x_distances[i]) @ obj.matrix_world
+        else:
+            for i, obj in enumerate(selected_objs):
+                obj.matrix_world = Matrix.Translation(active_y_axis * -y_distances[i]) @ obj.matrix_world
+        return {"FINISHED"}
+
+    def get_axis_distances(self, point, axis):
+        results = []
+        for obj in bpy.context.selected_objects:
+            if self.align_type == "CENTERLINE":
+                obj_point = obj.matrix_world @ (Vector(obj.bound_box[0]) + (obj.dimensions / 2))
+            elif self.align_type == "POSITIVE":
+                obj_point = obj.matrix_world @ Vector(obj.bound_box[6])
+            elif self.align_type == "NEGATIVE":
+                obj_point = obj.matrix_world @ Vector(obj.bound_box[0])
+            results.append(mathutils.geometry.distance_point_to_plane(obj_point, point, axis))
+        return results
+
+
 def generate_box(usecase_path, ifc_file, settings):
     box_context = ifcopenshell.util.representation.get_context(ifc_file, "Model", "Box", "MODEL_VIEW")
     if not box_context:
@@ -98,6 +145,7 @@ def generate_box(usecase_path, ifc_file, settings):
             **{"product": product, "representation": new_box}
         )
 
+
 def regenerate_profile_usage(usecase_path, ifc_file, settings):
     elements = []
     if ifc_file.schema == "IFC2X3":
@@ -117,4 +165,6 @@ def regenerate_profile_usage(usecase_path, ifc_file, settings):
             continue
         representation = ifcopenshell.util.representation.get_representation(element, "Model", "Body", "MODEL_VIEW")
         if representation:
-            bpy.ops.bim.switch_representation(obj=obj.name, ifc_definition_id=representation.id(), should_reload=True)
+            bpy.ops.bim.switch_representation(
+                obj=obj.name, ifc_definition_id=representation.id(), should_reload=True, should_switch_all_meshes=True
+            )
