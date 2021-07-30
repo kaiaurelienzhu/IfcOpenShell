@@ -20,7 +20,7 @@ def element_listener(element, obj):
 
 
 def mode_callback(obj, data):
-    for obj in bpy.context.selected_objects + [bpy.context.active_object]:
+    for obj in set(bpy.context.selected_objects + [bpy.context.active_object]):
         if (
             obj.mode != "EDIT"
             or not obj.data
@@ -33,7 +33,66 @@ def mode_callback(obj, data):
         parametric = ifcopenshell.util.element.get_psets(product).get("EPset_Parametric")
         if not parametric or parametric["Engine"] != "BlenderBIM.DumbWall":
             return
+        if product.HasOpenings:
+            if [m for m in obj.modifiers if m.type == "BOOLEAN"]:
+                continue
+            representation = ifcopenshell.util.representation.get_representation(
+                product, "Model", "Body", "MODEL_VIEW"
+            )
+            if not representation:
+                continue
+            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.bim.switch_representation(
+                obj=obj.name,
+                should_switch_all_meshes=True,
+                should_reload=True,
+                ifc_definition_id=representation.id(),
+                disable_opening_subtractions=True,
+            )
+            bpy.ops.object.mode_set(mode='EDIT')
         IfcStore.edited_objs.add(obj)
+        bm = bmesh.from_edit_mesh(obj.data)
+        bmesh.ops.dissolve_limit(bm, angle_limit=pi / 180 * 1, verts=bm.verts, edges=bm.edges)
+        bmesh.update_edit_mesh(obj.data)
+        bm.free()
+
+
+class AddWallOpening(bpy.types.Operator):
+    bl_idname = "bim.add_wall_opening"
+    bl_label = "Add Wall Opening"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        return IfcStore.execute_ifc_operator(self, context)
+
+    def _execute(self, context):
+        selected_objs = context.selected_objects
+        if len(selected_objs) == 0 or not context.active_object:
+            return {"FINISHED"}
+        wall_obj = context.active_object
+        if not wall_obj.BIMObjectProperties.ifc_definition_id:
+            return {"FINISHED"}
+        wall = IfcStore.get_file().by_id(wall_obj.BIMObjectProperties.ifc_definition_id)
+        if not wall.is_a("IfcWall"):
+            return {"FINISHED"}
+        local_location = wall_obj.matrix_world.inverted() @ context.scene.cursor.location
+        raycast = wall_obj.closest_point_on_mesh(local_location, distance=0.01)
+        if not raycast[0]:
+            return {"FINISHED"}
+        bpy.ops.mesh.primitive_cube_add(size=wall_obj.dimensions[1] * 2)
+        opening = bpy.context.selected_objects[0]
+
+        # Place the opening in the middle of the wall
+        global_location = wall_obj.matrix_world @ raycast[1]
+        normal = raycast[2]
+        normal.negate()
+        global_normal = wall_obj.matrix_world.to_quaternion() @ normal
+        opening.location = global_location + (global_normal * (wall_obj.dimensions[1] / 2))
+
+        opening.rotation_euler = wall_obj.rotation_euler
+        opening.name = "Opening"
+        bpy.ops.bim.add_opening(opening=opening.name, obj=wall_obj.name)
+        return {"FINISHED"}
 
 
 class JoinWall(bpy.types.Operator):

@@ -9,6 +9,8 @@ classes = (
     wall.AlignWall,
     wall.FlipWall,
     wall.SplitWall,
+    wall.AddWallOpening,
+    slab.AddSlabOpening,
     prop.BIMModelProperties,
     ui.BIM_PT_authoring,
     ui.BIM_PT_authoring_architectural,

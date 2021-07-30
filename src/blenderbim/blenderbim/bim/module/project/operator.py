@@ -29,17 +29,17 @@ class CreateProject(bpy.types.Operator):
             return {"FINISHED"}
 
         IfcStore.file = ifcopenshell.api.run(
-            "project.create_file", **{"version": bpy.context.scene.BIMProperties.export_schema}
+            "project.create_file", **{"version": context.scene.BIMProperties.export_schema}
         )
         self.file = IfcStore.get_file()
 
         bpy.ops.bim.add_person()
         bpy.ops.bim.add_organisation()
 
-        project = bpy.data.objects.new("My Project", None)
-        site = bpy.data.objects.new("My Site", None)
-        building = bpy.data.objects.new("My Building", None)
-        building_storey = bpy.data.objects.new("Ground Floor", None)
+        project = bpy.data.objects.new(self.get_name("IfcProject", "My Project"), None)
+        site = bpy.data.objects.new(self.get_name("IfcSite", "My Site"), None)
+        building = bpy.data.objects.new(self.get_name("IfcBuilding", "My Building"), None)
+        building_storey = bpy.data.objects.new(self.get_name("IfcBuildingStorey", "My Storey"), None)
 
         bpy.ops.bim.assign_class(obj=project.name, ifc_class="IfcProject")
         bpy.ops.bim.assign_unit()
@@ -49,7 +49,7 @@ class CreateProject(bpy.types.Operator):
         bpy.ops.bim.add_subcontext(context="Plan")
         bpy.ops.bim.add_subcontext(context="Plan", subcontext="Annotation", target_view="PLAN_VIEW")
 
-        bpy.context.scene.BIMProperties.contexts = str(
+        context.scene.BIMProperties.contexts = str(
             ifcopenshell.util.representation.get_context(self.file, "Model", "Body", "MODEL_VIEW").id()
         )
 
@@ -61,6 +61,14 @@ class CreateProject(bpy.types.Operator):
         bpy.ops.bim.assign_object(related_object=building_storey.name, relating_object=building.name)
 
         return {"FINISHED"}
+
+    def get_name(self, ifc_class, name):
+        if not bpy.data.objects.get(f"{ifc_class}/{name}"):
+            return name
+        i = 2
+        while bpy.data.objects.get(f"{ifc_class}/{name} {i}"):
+            i += 1
+        return f"{name} {i}"
 
     def rollback(self, data):
         IfcStore.file = None
@@ -89,7 +97,7 @@ class CreateProjectLibrary(bpy.types.Operator):
             return {"FINISHED"}
 
         IfcStore.file = ifcopenshell.api.run(
-            "project.create_file", **{"version": bpy.context.scene.BIMProperties.export_schema}
+            "project.create_file", **{"version": context.scene.BIMProperties.export_schema}
         )
         self.file = IfcStore.get_file()
 
@@ -318,14 +326,14 @@ class AppendLibraryElement(bpy.types.Operator):
             library=IfcStore.library_file,
             element=IfcStore.library_file.by_id(self.definition),
         )
-        self.import_type_from_ifc(element)
+        self.import_type_from_ifc(element, context)
         blenderbim.bim.handler.purge_module_data()
         return {"FINISHED"}
 
-    def import_type_from_ifc(self, element):
+    def import_type_from_ifc(self, element, context):
         self.file = IfcStore.get_file()
         logger = logging.getLogger("ImportIFC")
-        ifc_import_settings = import_ifc.IfcImportSettings.factory(bpy.context, IfcStore.path, logger)
+        ifc_import_settings = import_ifc.IfcImportSettings.factory(context, IfcStore.path, logger)
 
         type_collection = bpy.data.collections.get("Types")
         if not type_collection:

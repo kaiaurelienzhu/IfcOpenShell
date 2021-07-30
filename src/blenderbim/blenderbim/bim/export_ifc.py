@@ -89,7 +89,10 @@ class IfcExporter:
             if not obj:
                 continue
             try:
-                bpy.ops.bim.update_representation(obj=obj.name)
+                if isinstance(obj, bpy.types.Material):
+                    bpy.ops.bim.update_style_colours(material=obj.name)
+                else:
+                    bpy.ops.bim.update_representation(obj=obj.name)
             except ReferenceError:
                 pass  # The object is likely deleted
         IfcStore.edited_objs.clear()

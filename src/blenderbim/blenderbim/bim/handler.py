@@ -6,6 +6,7 @@ from bpy.app.handlers import persistent
 from blenderbim.bim.ifc import IfcStore
 from ifcopenshell.api.attribute.data import Data as AttributeData
 from ifcopenshell.api.material.data import Data as MaterialData
+from ifcopenshell.api.style.data import Data as StyleData
 from ifcopenshell.api.type.data import Data as TypeData
 
 
@@ -13,6 +14,8 @@ global_subscription_owner = object()
 
 
 def mode_callback(obj, data):
+    if not bpy.context.scene.BIMProjectProperties.is_authoring:
+        return
     objects = bpy.context.selected_objects
     if bpy.context.active_object:
         objects += [bpy.context.active_object]
@@ -22,9 +25,8 @@ def mode_callback(obj, data):
             or not obj.data
             or not isinstance(obj.data, (bpy.types.Mesh, bpy.types.Curve, bpy.types.TextCurve))
             or not obj.BIMObjectProperties.ifc_definition_id
-            or not bpy.context.scene.BIMProjectProperties.is_authoring
         ):
-            return
+            continue
         if obj.data.BIMMeshProperties.ifc_definition_id:
             representation = IfcStore.get_file().by_id(obj.data.BIMMeshProperties.ifc_definition_id)
             if representation.RepresentationType in ["Tessellation", "Brep", "Annotation2D"]:
@@ -34,6 +36,7 @@ def mode_callback(obj, data):
 
 
 def name_callback(obj, data):
+    # TODO Do we still need this, now that we are monitoring the undo redo objects?
     try:
         obj.name
     except:
@@ -49,6 +52,7 @@ def name_callback(obj, data):
             MaterialData.load_materials()
         if obj.BIMMaterialProperties.ifc_style_id:
             IfcStore.get_file().by_id(obj.BIMMaterialProperties.ifc_style_id).Name = obj.name
+            StyleData.load(IfcStore.get_file(), obj.BIMMaterialProperties.ifc_style_id)
         return
 
     if not obj.BIMObjectProperties.ifc_definition_id or "/" not in obj.name:
@@ -73,6 +77,11 @@ def name_callback(obj, data):
         TypeData.purge()
     element.Name = "/".join(obj.name.split("/")[1:])
     AttributeData.load(IfcStore.get_file(), obj.BIMObjectProperties.ifc_definition_id)
+
+
+def color_callback(obj, data):
+    if obj.BIMMaterialProperties.ifc_style_id:
+        IfcStore.edited_objs.add(obj)
 
 
 def active_object_callback():
@@ -122,12 +131,12 @@ def purge_module_data():
 @persistent
 def loadIfcStore(scene):
     IfcStore.purge()
+    purge_module_data()
     ifc_file = IfcStore.get_file()
     if not ifc_file:
         return
     IfcStore.get_schema()
     IfcStore.reload_linked_elements()
-    purge_module_data()
 
 
 @persistent

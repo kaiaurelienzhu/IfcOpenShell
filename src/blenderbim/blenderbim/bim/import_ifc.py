@@ -54,8 +54,27 @@ class MaterialCreator:
         if not self.mesh or self.mesh.name in self.parsed_meshes:
             return
         self.parsed_meshes.add(self.mesh.name)
+        self.add_default_material(element)
         if self.parse_representations(element):
             self.assign_material_slots_to_faces()
+
+    def add_default_material(self, element):
+        element_material = ifcopenshell.util.element.get_material(element)
+        if not element_material:
+            return
+        for material in [m for m in self.ifc_importer.file.traverse(element_material) if m.is_a("IfcMaterial")]:
+            if not material.HasRepresentation:
+                continue
+            surface_style = [
+                s for s in self.ifc_importer.file.traverse(material.HasRepresentation[0]) if s.is_a("IfcSurfaceStyle")
+            ]
+            if surface_style:
+                self.mesh.materials.append(self.styles[surface_style[0].id()])
+                return
+        # For authoring convenience, we choose to assign a material, even if it has no surface style. See #1585.
+        for material in [m for m in self.ifc_importer.file.traverse(element_material) if m.is_a("IfcMaterial")]:
+            self.mesh.materials.append(self.materials[material.id()])
+            return
 
     def load_existing_materials(self):
         for material in bpy.data.materials:
@@ -139,7 +158,7 @@ class IfcImporter:
         self.exclude_elements = set()
         self.project = None
         self.spatial_structure_elements = {}
-        self.elements = {}
+        self.elements = []
         self.type_collection = None
         self.type_products = {}
         self.openings = {}
@@ -460,7 +479,6 @@ class IfcImporter:
             grid_collection.objects.link(obj)
 
     def create_type_products(self):
-        type_products = self.file.by_type("IfcTypeProduct")
         for collection in self.project["blender"].children:
             if collection.name == "Types":
                 self.type_collection = collection
@@ -468,7 +486,15 @@ class IfcImporter:
         if not self.type_collection:
             self.type_collection = bpy.data.collections.new("Types")
             self.project["blender"].children.link(self.type_collection)
+
+        if self.filter_mode in ["WHITELIST", "BLACKLIST"]:
+            type_products = set([ifcopenshell.util.element.get_type(e) for e in self.elements])
+        else:
+            type_products = self.file.by_type("IfcTypeProduct")
+
         for type_product in type_products:
+            if not type_product:
+                continue
             self.create_type_product(type_product)
 
     def create_type_product(self, element):
@@ -568,9 +594,8 @@ class IfcImporter:
                     )
                 )
                 checkpoint = time.time()
-                self.update_progress(
-                    ((total_created / approx_total_products) * progress_range) + start_progress
-                )
+                if approx_total_products:
+                    self.update_progress(((total_created / approx_total_products) * progress_range) + start_progress)
             shape = iterator.get()
             if shape:
                 product = self.file.by_id(shape.guid)
@@ -591,7 +616,15 @@ class IfcImporter:
 
     def create_empty_and_2d_elements(self):
         curve_products = []
-        for element in self.file.by_type("IfcElement"):
+
+        if self.filter_mode == "WHITELIST":
+            self.elements = self.include_elements
+        elif self.filter_mode == "BLACKLIST":
+            self.elements = [e for e in self.file.by_type("IfcElement") if e not in self.exclude_elements]
+        else:
+            self.elements = self.file.by_type("IfcElement")
+
+        for element in self.elements:
             if element.id() in self.added_data:
                 continue
             if element.is_a("IfcPort"):
@@ -936,7 +969,6 @@ class IfcImporter:
 
     def set_ifc_file(self):
         bpy.context.scene.BIMProperties.ifc_file = self.ifc_import_settings.input_file
-        IfcStore.file = self.file
         IfcStore.path = self.ifc_import_settings.input_file
 
     def calculate_unit_scale(self):
