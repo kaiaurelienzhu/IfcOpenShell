@@ -32,15 +32,14 @@ class BIM_PT_debug(Panel):
         row = layout.row()
         row.operator("bim.profile_import_ifc")
 
-        row = layout.row()
+        row = layout.split(factor=0.5, align=True)
+        row.operator("bim.create_shape_from_step_id").should_include_curves = False
+        row.operator("bim.create_shape_from_step_id", text="", icon="IPO_ELASTIC").should_include_curves = True
         row.prop(props, "step_id", text="")
-        row = layout.row()
-        row.operator("bim.create_shape_from_step_id")
 
-        row = layout.row()
-        row.prop(props, "number_of_polygons", text="")
-        row = layout.row()
+        row = layout.split(factor=0.7, align=True)
         row.operator("bim.select_high_polygon_meshes")
+        row.prop(props, "number_of_polygons", text="")
 
         layout.label(text="Inspector:")
 

@@ -189,6 +189,11 @@ class AssignClass(bpy.types.Operator):
                 continue
             spatial_obj = bpy.data.objects.get(collection.name)
             if spatial_obj and spatial_obj.BIMObjectProperties.ifc_definition_id:
+                element = self.file.by_id(spatial_obj.BIMObjectProperties.ifc_definition_id)
+                if self.file.schema != "IFC2X3" and not element.is_a("IfcSpatialElement"):
+                    continue
+                elif self.file.schema == "IFC2X3" and not element.is_a("IfcSpatialStructureElement"):
+                    continue
                 bpy.ops.bim.assign_container(
                     relating_structure=spatial_obj.BIMObjectProperties.ifc_definition_id, related_element=obj.name
                 )
@@ -287,7 +292,7 @@ class CopyClass(bpy.types.Operator):
                 bpy.ops.bim.assign_type(relating_type=relating_type.id(), related_object=obj.name)
             else:
                 bpy.ops.bim.add_representation(obj=obj.name)
-            if result.is_a("IfcSpatialElement") or element.is_a("IfcSpatialStructureElement"):
+            if result.is_a("IfcSpatialElement") or result.is_a("IfcSpatialStructureElement"):
                 self.place_in_spatial_collection(old_element, obj)
         return {"FINISHED"}
 

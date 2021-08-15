@@ -153,7 +153,7 @@ class IfcImporter:
         self.settings_native.set(self.settings_native.INCLUDE_CURVES, True)
         self.settings_2d = ifcopenshell.geom.settings()
         self.settings_2d.set(self.settings_2d.INCLUDE_CURVES, True)
-        self.filter_mode = "BLACKLIST"
+        self.filter_mode = None
         self.include_elements = set()
         self.exclude_elements = set()
         self.project = None
@@ -349,7 +349,10 @@ class IfcImporter:
         props = bpy.context.scene.BIMGeoreferenceProperties
         if props.has_blender_offset:
             return
-        project = self.file.by_type("IfcProject")[0]
+        if self.file.schema == "IFC2X3":
+            project = self.file.by_type("IfcProject")[0]
+        else:
+            project = self.file.by_type("IfcContext")[0]
         site = self.find_decomposed_ifc_class(project, "IfcSite")
         if site and self.is_element_far_away(site[0], is_meters=False):
             return self.guess_georeferencing(site[0])
@@ -1004,8 +1007,13 @@ class IfcImporter:
                 )
 
     def create_project(self):
-        self.project = {"ifc": self.file.by_type("IfcProject")[0]}
-        self.project["blender"] = bpy.data.collections.new("IfcProject/{}".format(self.project["ifc"].Name))
+        if self.file.schema == "IFC2X3":
+            self.project = {"ifc": self.file.by_type("IfcProject")[0]}
+        else:
+            self.project = {"ifc": self.file.by_type("IfcContext")[0]}
+        self.project["blender"] = bpy.data.collections.new(
+            "{}/{}".format(self.project["ifc"].is_a(), self.project["ifc"].Name)
+        )
         obj = self.create_product(self.project["ifc"])
         if obj:
             self.project["blender"].objects.link(obj)
@@ -1069,10 +1077,14 @@ class IfcImporter:
 
     def create_materials(self):
         for material in self.file.by_type("IfcMaterial"):
-            blender_material = bpy.data.materials.new(material.Name)
-            self.link_element(material, blender_material)
-            self.material_creator.materials[material.id()] = blender_material
-            blender_material.use_fake_user = True
+            self.create_material(material)
+
+    def create_material(self, material):
+        blender_material = bpy.data.materials.new(material.Name)
+        self.link_element(material, blender_material)
+        self.material_creator.materials[material.id()] = blender_material
+        blender_material.use_fake_user = True
+        return blender_material
 
     def create_styles(self):
         parsed_styles = set()
@@ -1088,11 +1100,13 @@ class IfcImporter:
         for style in self.file.by_type("IfcSurfaceStyle"):
             if style.id() in parsed_styles:
                 continue
+            self.create_style(style)
+
+    def create_style(self, style, blender_material=None):
+        if not blender_material:
             name = style.Name or str(style.id())
             blender_material = bpy.data.materials.new(name)
-            self.create_style(style, blender_material)
 
-    def create_style(self, style, blender_material):
         old_definition_id = blender_material.BIMObjectProperties.ifc_definition_id
         if not old_definition_id:
             self.link_element(style, blender_material)
@@ -1134,7 +1148,7 @@ class IfcImporter:
                 self.place_object_in_spatial_tree(self.file.by_id(ifc_definition_id), obj)
 
     def place_object_in_spatial_tree(self, element, obj):
-        if element.is_a("IfcProject"):
+        if element.is_a() in ["IfcProject", "IfcProjectLibrary"]:
             return
         elif element.is_a("IfcTypeObject"):
             self.type_collection.objects.link(obj)
